@@ -8,6 +8,7 @@ interface Props {
   total: number;
   onPageChange: (page: number) => void;
   onRetry: (token: string) => void;
+  backendUsed?: string;
 }
 
 const headerStyle: React.CSSProperties = {
@@ -24,11 +25,28 @@ const cellStyle: React.CSSProperties = {
   borderBottom: '1px solid #F3F4F6'
 };
 
-const FailuresTable: React.FC<Props> = ({ data, page, pageSize, total, onPageChange, onRetry }) => {
+const noticeStyle: React.CSSProperties = {
+  backgroundColor: '#FEE2E2',
+  color: '#B91C1C',
+  padding: '12px 16px',
+  fontSize: 13,
+  fontWeight: 500,
+  borderBottom: '1px solid #FCA5A5'
+};
+
+const FailuresTable: React.FC<Props> = ({ data, page, pageSize, total, onPageChange, onRetry, backendUsed }) => {
   const totalPages = Math.max(1, Math.ceil(total / pageSize));
+  const trimmedBackend = backendUsed?.trim();
+  const showFallbackNotice =
+    !!trimmedBackend && trimmedBackend.toLowerCase() !== 'yomitoku';
 
   return (
     <div style={{ backgroundColor: '#FFFFFF', borderRadius: 16, boxShadow: '0 2px 12px rgba(0,0,0,0.08)', overflow: 'hidden' }}>
+      {showFallbackNotice && (
+        <div style={noticeStyle}>
+          ※ YomiToku が利用できなかったため {trimmedBackend} に切り替えました。
+        </div>
+      )}
       <table style={{ width: '100%', borderCollapse: 'separate', borderSpacing: 0 }}>
         <thead style={{ backgroundColor: '#FEE2E2' }}>
           <tr>
