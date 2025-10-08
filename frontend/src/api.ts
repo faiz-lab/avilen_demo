@@ -2,6 +2,8 @@ export interface UploadResponse {
   task_id: string;
 }
 
+export type OcrBackend = 'yomitoku' | 'rapidocr' | 'paddleocr';
+
 export interface StatusResponse {
   progress: number;
   pages: number;
@@ -11,6 +13,7 @@ export interface StatusResponse {
     hit_spec: number;
     fail: number;
   };
+  backend_used?: string;
 }
 
 export interface ResultItem {
@@ -35,7 +38,7 @@ export interface RetryResponse {
 export const uploadFiles = async (
   dbFile: File,
   pdfFiles: File[],
-  ocrBackend: string
+  ocrBackend: OcrBackend = 'yomitoku'
 ): Promise<UploadResponse> => {
   const formData = new FormData();
   formData.append('db_csv', dbFile);

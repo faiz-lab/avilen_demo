@@ -12,7 +12,8 @@ import {
   getResults,
   getStatus,
   retryToken,
-  uploadFiles
+  uploadFiles,
+  OcrBackend
 } from './api';
 
 const pageSize = 10;
@@ -20,7 +21,7 @@ const pageSize = 10;
 const App: React.FC = () => {
   const [dbFile, setDbFile] = useState<File | null>(null);
   const [pdfFiles, setPdfFiles] = useState<File[]>([]);
-  const [ocrBackend, setOcrBackend] = useState('rapidocr');
+  const [ocrBackend, setOcrBackend] = useState<OcrBackend>('yomitoku');
   const [taskId, setTaskId] = useState<string | null>(null);
   const [status, setStatus] = useState<StatusResponse | null>(null);
   const [progress, setProgress] = useState(0);
@@ -135,7 +136,7 @@ const App: React.FC = () => {
           <span style={{ fontSize: 14, color: '#4B5563' }}>OCRエンジン</span>
           <select
             value={ocrBackend}
-            onChange={(e) => setOcrBackend(e.target.value)}
+            onChange={(e) => setOcrBackend(e.target.value as OcrBackend)}
             style={{
               padding: '8px 12px',
               borderRadius: 12,
@@ -144,6 +145,7 @@ const App: React.FC = () => {
               backgroundColor: '#F8FAFC'
             }}
           >
+            <option value="yomitoku">YomiToku (デフォルト利用)</option>
             <option value="rapidocr">RapidOCR</option>
             <option value="paddleocr">PaddleOCR</option>
           </select>
@@ -272,6 +274,7 @@ const App: React.FC = () => {
               total={filteredFailures.length}
               onPageChange={setFailurePage}
               onRetry={handleRetry}
+              backendUsed={status?.backend_used}
             />
           )}
         </section>

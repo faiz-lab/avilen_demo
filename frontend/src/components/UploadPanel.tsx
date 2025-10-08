@@ -1,18 +1,18 @@
 import React, { useCallback } from 'react';
 import ProgressBar from './ProgressBar';
 import StatsCards from './StatsCards';
-import { StatusResponse } from '../api';
+import { OcrBackend, StatusResponse } from '../api';
 
 interface Props {
   dbFile: File | null;
   pdfFiles: File[];
-  ocrBackend: string;
+  ocrBackend: OcrBackend;
   status: StatusResponse | null;
   progress: number;
   isProcessing: boolean;
   onDbSelect: (file: File) => void;
   onPdfSelect: (files: File[]) => void;
-  onBackendChange: (backend: string) => void;
+  onBackendChange: (backend: OcrBackend) => void;
   onStart: () => void;
   error: string | null;
 }
@@ -125,7 +125,7 @@ const UploadPanel: React.FC<Props> = ({
         <div style={sectionTitle}>OCRエンジン</div>
         <select
           value={ocrBackend}
-          onChange={(e) => onBackendChange(e.target.value)}
+          onChange={(e) => onBackendChange(e.target.value as OcrBackend)}
           style={{
             width: '100%',
             padding: '10px 12px',
@@ -135,7 +135,8 @@ const UploadPanel: React.FC<Props> = ({
             marginTop: 10
           }}
         >
-          <option value="rapidocr">RapidOCR (推奨)</option>
+          <option value="yomitoku">YomiToku (デフォルト利用)</option>
+          <option value="rapidocr">RapidOCR</option>
           <option value="paddleocr">PaddleOCR</option>
         </select>
       </div>
@@ -172,7 +173,10 @@ const UploadPanel: React.FC<Props> = ({
 
       <div>
         <div style={sectionTitle}>統計サマリー</div>
-        <StatsCards totals={status?.totals || { tokens: 0, hit_hinban: 0, hit_spec: 0, fail: 0 }} />
+        <StatsCards
+          totals={status?.totals || { tokens: 0, hit_hinban: 0, hit_spec: 0, fail: 0 }}
+          backendUsed={status?.backend_used}
+        />
       </div>
     </div>
   );

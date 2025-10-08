@@ -12,6 +12,7 @@ interface Props {
     hit_spec: number;
     fail: number;
   };
+  backendUsed?: string;
 }
 
 const cardStyle: React.CSSProperties = {
@@ -34,7 +35,13 @@ const valueStyle: React.CSSProperties = {
   color: '#1D4ED8'
 };
 
-const StatsCards: React.FC<Props> = ({ totals }) => {
+const footerStyle: React.CSSProperties = {
+  fontSize: 12,
+  color: '#6B7280',
+  marginTop: 8
+};
+
+const StatsCards: React.FC<Props> = ({ totals, backendUsed }) => {
   const stats: StatItem[] = [
     { title: '抽出トークン数', value: totals.tokens },
     { title: '品番一致', value: totals.hit_hinban },
@@ -50,6 +57,7 @@ const StatsCards: React.FC<Props> = ({ totals }) => {
           <div style={valueStyle}>{stat.value}</div>
         </div>
       ))}
+      <div style={footerStyle}>使用エンジン：{backendUsed ?? '—'}</div>
     </div>
   );
 };
