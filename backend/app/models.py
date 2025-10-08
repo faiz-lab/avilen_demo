@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from pathlib import Path
 from typing import List, Optional
 
 from pydantic import BaseModel
@@ -14,6 +13,7 @@ class StatusResponse(BaseModel):
     progress: int
     pages: int
     totals: dict
+    backend_used: Optional[str] = None
 
 
 class RetryRequest(BaseModel):

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import io
 import logging
+import os
 import threading
 from pathlib import Path
 from typing import Dict, List
@@ -34,6 +35,16 @@ DB_PATHS: Dict[str, Path] = {}
 RESULT_CACHE: Dict[str, List[Dict[str, str]]] = {}
 FAILURE_CACHE: Dict[str, List[Dict[str, str]]] = {}
 
+ALLOWED_OCR_BACKENDS = {"yomitoku", "rapidocr", "paddleocr"}
+
+
+def _get_default_backend() -> str:
+    default_backend = os.getenv("OCR_BACKEND_DEFAULT", "yomitoku").strip().lower()
+    if default_backend not in ALLOWED_OCR_BACKENDS:
+        logger.warning("Invalid OCR_BACKEND_DEFAULT=%s. Falling back to yomitoku.", default_backend)
+        return "yomitoku"
+    return default_backend
+
 
 def _read_csv(data: bytes) -> pd.DataFrame:
     for encoding in ("utf-8-sig", "utf-8", "cp932"):
@@ -44,11 +55,18 @@ def _read_csv(data: bytes) -> pd.DataFrame:
     raise ValueError("CSVの文字コードを判別できません。UTF-8 で保存してください。")
 
 
-def _process_task(task_id: str, db_bytes: bytes, pdf_entries: List[tuple[str, bytes]], ocr_backend: str) -> None:
+def _process_task(
+    task_id: str,
+    db_bytes: bytes,
+    pdf_entries: List[tuple[str, bytes]],
+    ocr_backend: str,
+) -> None:
     with TASK_LOCK:
         state = TASKS.get(task_id)
     if state is None:
         return
+
+    state.backend_requested = ocr_backend
 
     task_dir = init_task_storage(task_id)
     try:
@@ -68,7 +86,8 @@ def _process_task(task_id: str, db_bytes: bytes, pdf_entries: List[tuple[str, by
         pdf_path = task_dir / name
         pdf_path.write_bytes(data)
         try:
-            texts = extract_pdf_text(pdf_path, backend=ocr_backend)
+            texts, backend_used = extract_pdf_text(pdf_path, backend=ocr_backend)
+            state.backend_used = backend_used
         except RuntimeError as exc:
             state.status = "error"
             state.error = str(exc)
@@ -109,11 +128,13 @@ def _process_task(task_id: str, db_bytes: bytes, pdf_entries: List[tuple[str, by
                             record["zaiko"] = match["zaiko"]
                         results.append(record)
                 else:
-                    failures.append({
-                        "pdf_name": pdf_name,
-                        "page": page_idx,
-                        "token": token,
-                    })
+                    failures.append(
+                        {
+                            "pdf_name": pdf_name,
+                            "page": page_idx,
+                            "token": token,
+                        }
+                    )
                     state.totals["fail"] += 1
             processed_pages += 1
             state.progress = int(min(100, (processed_pages / max(1, state.pages)) * 100))
@@ -139,9 +160,17 @@ def _process_task(task_id: str, db_bytes: bytes, pdf_entries: List[tuple[str, by
 
 
 @app.post("/api/upload", response_model=UploadResponse)
-async def upload(db_csv: UploadFile = File(...), pdfs: List[UploadFile] = File(...), ocr_backend: str = "rapidocr"):
+async def upload(
+    db_csv: UploadFile = File(...),
+    pdfs: List[UploadFile] = File(...),
+    ocr_backend: str | None = None,
+):
     if not pdfs:
         raise HTTPException(status_code=400, detail="PDFファイルを1件以上アップロードしてください。")
+
+    requested_backend = (ocr_backend or _get_default_backend()).strip().lower()
+    if requested_backend not in ALLOWED_OCR_BACKENDS:
+        raise HTTPException(status_code=400, detail=f"未対応のOCRバックエンドです: {requested_backend}")
 
     task_id = generate_task_id()
     state = TaskState()
@@ -153,7 +182,11 @@ async def upload(db_csv: UploadFile = File(...), pdfs: List[UploadFile] = File(.
     for pdf in pdfs:
         pdf_entries.append((pdf.filename or "document.pdf", await pdf.read()))
 
-    thread = threading.Thread(target=_process_task, args=(task_id, db_bytes, pdf_entries, ocr_backend), daemon=True)
+    thread = threading.Thread(
+        target=_process_task,
+        args=(task_id, db_bytes, pdf_entries, requested_backend),
+        daemon=True,
+    )
     thread.start()
 
     return UploadResponse(task_id=task_id)
@@ -166,7 +199,12 @@ async def status(task_id: str):
         raise HTTPException(status_code=404, detail="指定されたタスクIDが存在しません。")
     if state.status == "error":
         raise HTTPException(status_code=500, detail=state.error or "タスクでエラーが発生しました。")
-    return StatusResponse(progress=state.progress, pages=state.pages, totals=state.totals)
+    return StatusResponse(
+        progress=state.progress,
+        pages=state.pages,
+        totals=state.totals,
+        backend_used=state.backend_used,
+    )
 
 
 @app.get("/api/results/{task_id}")
