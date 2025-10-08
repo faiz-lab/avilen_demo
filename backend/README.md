@@ -33,14 +33,16 @@ export YOMITOKU_BASE_URL=http://localhost:8001
 
 各ページ画像を `POST {BASE_URL}/v1/ocr` に `multipart/form-data` として送信します。レスポンス JSON の `pages[].text` を統合してテキスト化します。
 
-### CLI 連携
+### Python 連携
 
 ```
 export YOMITOKU_MODE=cli
-export YOMITOKU_CLI_PATH=/usr/local/bin/yomitoku
+# 既定では yomitoku パッケージ内の ocr_bytes / ocr_image 系 API を自動検出します
+# 必要に応じて以下のように明示的にエントリポイントを指定できます
+# export YOMITOKU_PY_ENTRYPOINT=yomitoku.api.ocr_bytes
 ```
 
-CLI 版は各ページの PNG を一時ファイルとして保存し、`<cli_path> --image <file>` で実行します。標準出力は JSON を想定しています。
+バックエンドは YomiToku の Python API を直接 import して呼び出します。PNG バイト列、NumPy 配列、もしくは一時ファイルのパスを順に試行し、対応する API で OCR を実行します。返却値は CLI と同様に `pages[].text` を含む JSON（dict または JSON 文字列）を想定しています。
 
 ### デフォルトバックエンドの選択とフォールバック
 
@@ -57,9 +59,9 @@ OCR_BACKEND_DEFAULT=yomitoku
 YOMITOKU_MODE=rest
 YOMITOKU_BASE_URL=http://localhost:8001
 # YOMITOKU_API_KEY=xxxxxx
-# CLI を使用する場合:
+# Python API を使用する場合:
 # YOMITOKU_MODE=cli
-# YOMITOKU_CLI_PATH=/usr/local/bin/yomitoku
+# YOMITOKU_PY_ENTRYPOINT=yomitoku.api.ocr_bytes
 ```
 
 ## テスト
