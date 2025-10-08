@@ -1,0 +1,47 @@
+@base = http://127.0.0.1:8000
+
+### Upload sample job
+POST {{base}}/api/upload
+Content-Type: multipart/form-data; boundary=Boundary123
+
+--Boundary123
+Content-Disposition: form-data; name="db_csv"; filename="master.csv"
+Content-Type: text/csv
+
+{{file scripts/fixtures/master.csv}}
+--Boundary123
+Content-Disposition: form-data; name="pdfs"; filename="sample.pdf"
+Content-Type: application/pdf
+
+{{file scripts/fixtures/sample.pdf}}
+--Boundary123
+Content-Disposition: form-data; name="ocr_backend"
+
+rapidocr
+--Boundary123--
+
+> {% client.global.set('task_id', response.body.task_id); %}
+
+### Poll status using saved task_id
+GET {{base}}/api/status/{{task_id}}
+
+### Fetch results
+GET {{base}}/api/results/{{task_id}}
+
+### Fetch failures
+GET {{base}}/api/failures/{{task_id}}
+
+### Retry a token
+POST {{base}}/api/retry
+Content-Type: application/json
+
+{
+  "task_id": "{{task_id}}",
+  "token": "ABC123"
+}
+
+### Download results CSV
+GET {{base}}/api/download/{{task_id}}?type=results
+
+### Download failures CSV
+GET {{base}}/api/download/{{task_id}}?type=failures

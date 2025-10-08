@@ -1,6 +1,5 @@
 from __future__ import annotations
-
-from typing import List, Optional
+from typing import Dict, List, Optional
 
 from pydantic import BaseModel
 
@@ -12,7 +11,7 @@ class UploadResponse(BaseModel):
 class StatusResponse(BaseModel):
     progress: int
     pages: int
-    totals: dict
+    totals: Dict[str, int]
     backend_used: Optional[str] = None
 
 
