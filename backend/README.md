@@ -2,6 +2,8 @@
 
 このディレクトリには FastAPI ベースの OCR マッチング API が含まれます。`requirements.txt` を使用して依存関係をインストールし、`uvicorn app.main:app --reload` で起動してください。
 
+アップロードするマスタ CSV には `hinban`・`kidou`・`zaiku` の 3 列が必須です。余分な列は読み込み時に無視され、必須列が不足している場合はエラー `CSVに必要な列（hinban, kidou, zaiku）が含まれていません。` を返します。
+
 ```
 cd backend
 python -m venv .venv

@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import io
 import logging
 import os
 import threading
@@ -12,8 +11,9 @@ from fastapi import FastAPI, File, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 
+from .db import load_db_csv
 from .extract import extract_pdf_text
-from .match import build_database_index, extract_tokens, match_token
+from .match import build_database_index, extract_tokens, match_token_to_db
 from .models import RetryRequest, RetryResponse, StatusResponse, UploadResponse
 from .utils import TaskState, generate_task_id, init_task_storage
 
@@ -46,15 +46,6 @@ def _get_default_backend() -> str:
     return default_backend
 
 
-def _read_csv(data: bytes) -> pd.DataFrame:
-    for encoding in ("utf-8-sig", "utf-8", "cp932"):
-        try:
-            return pd.read_csv(io.BytesIO(data), encoding=encoding)
-        except UnicodeDecodeError:
-            continue
-    raise ValueError("CSVの文字コードを判別できません。UTF-8 で保存してください。")
-
-
 def _process_task(
     task_id: str,
     db_bytes: bytes,
@@ -70,11 +61,16 @@ def _process_task(
 
     task_dir = init_task_storage(task_id)
     try:
-        df = _read_csv(db_bytes)
+        df = load_db_csv(db_bytes)
         index = build_database_index(df)
         db_path = task_dir / "database.csv"
-        db_path.write_bytes(db_bytes)
+        df.to_csv(db_path, index=False, encoding="utf-8-sig")
         DB_PATHS[task_id] = db_path
+    except ValueError as exc:
+        state.status = "error"
+        state.error = str(exc)
+        logger.warning("Invalid CSV uploaded: %s", exc)
+        return
     except Exception as exc:
         state.status = "error"
         state.error = f"CSVの解析に失敗しました: {exc}"
@@ -110,23 +106,19 @@ def _process_task(
             tokens = extract_tokens(page_text)
             state.totals["tokens"] += len(tokens)
             for token in tokens:
-                matches = match_token(token, index)
-                if matches:
-                    for match in matches:
-                        record = {
+                match = match_token_to_db(token, index)
+                if match.get("matched"):
+                    results.append(
+                        {
                             "pdf_name": pdf_name,
                             "page": page_idx,
                             "token": token,
-                            "matched_type": match.get("matched_type"),
-                            "matched_hinban": match.get("matched_hinban"),
+                            "hinban": match.get("hinban", ""),
+                            "kidou": match.get("kidou", ""),
+                            "zaiku": match.get("zaiku", ""),
                         }
-                        if match.get("matched_type") == "hinban":
-                            state.totals["hit_hinban"] += 1
-                        elif match.get("matched_type") == "spec":
-                            state.totals["hit_spec"] += 1
-                        if "zaiko" in match:
-                            record["zaiko"] = match["zaiko"]
-                        results.append(record)
+                    )
+                    state.totals["matched"] += 1
                 else:
                     failures.append(
                         {
@@ -139,14 +131,15 @@ def _process_task(
             processed_pages += 1
             state.progress = int(min(100, (processed_pages / max(1, state.pages)) * 100))
 
-    results_df = pd.DataFrame(results)
+    results_columns = ["pdf_name", "page", "token", "hinban", "kidou", "zaiku"]
+    results_df = pd.DataFrame(results, columns=results_columns)
     if not results_df.empty:
-        results_df = results_df.sort_values(by=["pdf_name", "page", "matched_type"])
+        results_df = results_df.sort_values(by=["pdf_name", "page"])
     results_path = task_dir / "results.csv"
     results_df.to_csv(results_path, index=False, encoding="utf-8-sig")
     RESULT_CACHE[task_id] = results_df.to_dict(orient="records") if not results_df.empty else []
 
-    failures_df = pd.DataFrame(failures)
+    failures_df = pd.DataFrame(failures, columns=["pdf_name", "page", "token"])
     if not failures_df.empty:
         failures_df = failures_df.sort_values(by=["pdf_name", "page"])
     failures_path = task_dir / "failure.csv"
@@ -198,7 +191,7 @@ async def status(task_id: str):
     if state is None:
         raise HTTPException(status_code=404, detail="指定されたタスクIDが存在しません。")
     if state.status == "error":
-        raise HTTPException(status_code=500, detail=state.error or "タスクでエラーが発生しました。")
+        raise HTTPException(status_code=400, detail=state.error or "タスクでエラーが発生しました。")
     return StatusResponse(
         progress=state.progress,
         pages=state.pages,
@@ -236,10 +229,12 @@ async def retry(request: RetryRequest):
     if db_path is None or not db_path.exists():
         raise HTTPException(status_code=400, detail="DBが利用できません。再度アップロードしてください。")
 
-    df = pd.read_csv(db_path)
+    df = load_db_csv(db_path.read_bytes())
     index = build_database_index(df)
-    matches = match_token(request.token, index)
-    candidates = [m.get("matched_hinban") for m in matches if m.get("matched_hinban")]
+    match = match_token_to_db(request.token, index)
+    candidates: List[str] = []
+    if match.get("matched"):
+        candidates.append(str(match.get("hinban", "")))
     return RetryResponse(candidates=candidates)
 
 

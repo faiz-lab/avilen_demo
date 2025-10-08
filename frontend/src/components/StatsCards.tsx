@@ -8,8 +8,7 @@ interface StatItem {
 interface Props {
   totals: {
     tokens: number;
-    hit_hinban: number;
-    hit_spec: number;
+    matched: number;
     fail: number;
   };
   backendUsed?: string;
@@ -44,8 +43,7 @@ const footerStyle: React.CSSProperties = {
 const StatsCards: React.FC<Props> = ({ totals, backendUsed }) => {
   const stats: StatItem[] = [
     { title: '抽出トークン数', value: totals.tokens },
-    { title: '品番一致', value: totals.hit_hinban },
-    { title: 'スペック一致', value: totals.hit_spec },
+    { title: '照合成功', value: totals.matched },
     { title: '失敗', value: totals.fail }
   ];
 

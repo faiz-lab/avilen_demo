@@ -9,8 +9,7 @@ export interface StatusResponse {
   pages: number;
   totals: {
     tokens: number;
-    hit_hinban: number;
-    hit_spec: number;
+    matched: number;
     fail: number;
   };
   backend_used?: string;
@@ -20,8 +19,8 @@ export interface ResultItem {
   pdf_name: string;
   page: number;
   token: string;
-  matched_type?: 'hinban' | 'spec';
-  matched_hinban?: string;
+  hinban?: string;
+  kidou?: string;
   zaiko?: string;
 }
 

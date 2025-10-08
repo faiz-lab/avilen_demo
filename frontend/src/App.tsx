@@ -94,7 +94,7 @@ const App: React.FC = () => {
     if (!search) return results;
     const keyword = search.toUpperCase();
     return results.filter((row) =>
-      [row.pdf_name, row.token, row.matched_hinban, row.matched_type]
+      [row.pdf_name, row.token, row.hinban, row.kidou, row.zaiko]
         .filter(Boolean)
         .some((value) => value?.toString().toUpperCase().includes(keyword))
     );

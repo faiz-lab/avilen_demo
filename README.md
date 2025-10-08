@@ -56,12 +56,12 @@ PDF 図面や仕様書をローカル環境で OCR し、マスタ CSV と照合
 
 ## サンプルデータ
 
-- `backend/app/sample_db.csv`: 品番・スペック・在庫情報を含むサンプルマスタ。
+- `backend/app/sample_db.csv`: 品番 (`hinban`)・起動方式 (`kidou`)・在庫情報 (`zaiku`) を含むサンプルマスタ。
 - `backend/app/sample_pdfs/spec_sheet_A.pdf`, `spec_sheet_B.pdf`: OCR 用テスト PDF。
 
 ## 使い方
 
-1. 画面左側から `sample_db.csv` をアップロードします。
+1. 画面左側から `sample_db.csv` をアップロードします（CSV には `hinban`, `kidou`, `zaiku` 列が必須です）。
 2. 複数 PDF をドラッグ＆ドロップで追加します。
 3. 必要に応じて OCR エンジン (RapidOCR / PaddleOCR) を切り替えます。
 4. 「処理を開始する」をクリックするとバックエンドで処理が開始されます。
