@@ -174,7 +174,7 @@ const UploadPanel: React.FC<Props> = ({
       <div>
         <div style={sectionTitle}>統計サマリー</div>
         <StatsCards
-          totals={status?.totals || { tokens: 0, hit_hinban: 0, hit_spec: 0, fail: 0 }}
+          totals={status?.totals || { tokens: 0, matched: 0, fail: 0 }}
           backendUsed={status?.backend_used}
         />
       </div>

@@ -3,7 +3,7 @@ from __future__ import annotations
 import re
 import unicodedata
 from dataclasses import dataclass
-from typing import Dict, List, TYPE_CHECKING
+from typing import Dict, List, Set, TYPE_CHECKING
 
 if TYPE_CHECKING:  # pragma: no cover
     import pandas as pd
@@ -28,8 +28,8 @@ BLACKLIST = {
 
 @dataclass
 class DatabaseIndex:
-    frame: 'pd.DataFrame'
-    hinban_map: Dict[str, List[int]]
+    df: "pd.DataFrame"
+    hinban_set: Set[str]
 
 
 def normalize(value: str) -> str:
@@ -53,48 +53,24 @@ def extract_tokens(text: str) -> List[str]:
     return sorted(candidates)
 
 
-def build_database_index(df: 'pd.DataFrame') -> DatabaseIndex:
-    import pandas as pd  # type: ignore
-
-    if "hinban" not in df.columns or "spec" not in df.columns:
-        raise ValueError("CSVに 'hinban' および 'spec' 列が必要です。")
-
+def build_database_index(df: "pd.DataFrame") -> DatabaseIndex:
     frame = df.copy()
-    frame["HINBAN_N"] = frame["hinban"].fillna("").apply(normalize)
-    frame["SPEC_N"] = frame["spec"].fillna("").apply(normalize)
-
-    hinban_map: Dict[str, List[int]] = {}
-    for idx, value in frame["HINBAN_N"].items():
-        if not value:
-            continue
-        hinban_map.setdefault(value, []).append(idx)
-
-    return DatabaseIndex(frame=frame, hinban_map=hinban_map)
+    frame["hinban"] = frame["hinban"].fillna("")
+    frame["kidou"] = frame["kidou"].fillna("")
+    frame["zaiku"] = frame["zaiku"].fillna("")
+    frame["HINBAN_N"] = frame["hinban"].apply(normalize)
+    hinban_set: Set[str] = set(frame["HINBAN_N"])
+    return DatabaseIndex(df=frame, hinban_set=hinban_set)
 
 
-def match_token(token: str, index: DatabaseIndex) -> List[Dict[str, str]]:
-    results: List[Dict[str, str]] = []
-    normalized_token = normalize(token)
-
-    if normalized_token in index.hinban_map:
-        for row_idx in index.hinban_map[normalized_token]:
-            row = index.frame.loc[row_idx]
-            result = {
-                "matched_type": "hinban",
-                "matched_hinban": row.get("hinban", ""),
-            }
-            if "zaiko" in row:
-                result["zaiko"] = row.get("zaiko")
-            results.append(result)
-        return results
-
-    spec_matches = index.frame[index.frame["SPEC_N"].str.contains(normalized_token, na=False)]
-    for _, row in spec_matches.iterrows():
-        result = {
-            "matched_type": "spec",
-            "matched_hinban": row.get("hinban", ""),
+def match_token_to_db(token: str, index: DatabaseIndex) -> Dict[str, object]:
+    token_n = normalize(token)
+    if token_n in index.hinban_set:
+        row = index.df.loc[index.df["HINBAN_N"] == token_n].iloc[0]
+        return {
+            "matched": True,
+            "hinban": row["hinban"],
+            "kidou": row["kidou"],
+            "zaiku": row["zaiku"],
         }
-        if "zaiko" in row:
-            result["zaiko"] = row.get("zaiko")
-        results.append(result)
-    return results
+    return {"matched": False}

@@ -1,4 +1,5 @@
 from __future__ import annotations
+
 from typing import Dict, List, Optional
 
 from pydantic import BaseModel
@@ -28,9 +29,9 @@ class ResultItem(BaseModel):
     pdf_name: str
     page: int
     token: str
-    matched_type: Optional[str]
-    matched_hinban: Optional[str]
-    zaiko: Optional[str] = None
+    hinban: Optional[str] = None
+    kidou: Optional[str] = None
+    zaiku: Optional[str] = None
 
     @classmethod
     def from_row(cls, row: dict) -> "ResultItem":

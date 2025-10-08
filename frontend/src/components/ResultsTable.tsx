@@ -39,8 +39,8 @@ const ResultsTable: React.FC<Props> = ({ data, page, pageSize, total, onPageChan
             <th style={headerStyle}>PDF名</th>
             <th style={headerStyle}>ページ</th>
             <th style={headerStyle}>トークン</th>
-            <th style={headerStyle}>一致タイプ</th>
-            <th style={headerStyle}>マッチ品番</th>
+            <th style={headerStyle}>品番</th>
+            <th style={headerStyle}>起動方式</th>
             <th style={headerStyle}>在庫情報</th>
           </tr>
         </thead>
@@ -55,8 +55,8 @@ const ResultsTable: React.FC<Props> = ({ data, page, pageSize, total, onPageChan
               <td style={cellStyle}>{row.pdf_name}</td>
               <td style={cellStyle}>{row.page}</td>
               <td style={cellStyle}>{row.token}</td>
-              <td style={cellStyle}>{row.matched_type === 'hinban' ? '品番' : row.matched_type === 'spec' ? 'スペック' : '-'}</td>
-              <td style={cellStyle}>{row.matched_hinban || '-'}</td>
+              <td style={cellStyle}>{row.hinban || '-'}</td>
+              <td style={cellStyle}>{row.kidou || '-'}</td>
               <td style={cellStyle}>{row.zaiko || '-'}</td>
             </tr>
           ))}

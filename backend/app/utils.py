@@ -143,8 +143,7 @@ class TaskState:
         self.error: str | None = None
         self.totals: dict[str, int] = {
             "tokens": 0,
-            "hit_hinban": 0,
-            "hit_spec": 0,
+            "matched": 0,
             "fail": 0,
         }
         self.results_path: Path | None = None
