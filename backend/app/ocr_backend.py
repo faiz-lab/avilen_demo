@@ -4,10 +4,10 @@ from __future__ import annotations
 import json
 import logging
 import os
-import subprocess
 import tempfile
+from importlib import import_module
 from pathlib import Path
-from typing import Iterable, List
+from typing import Iterable, List, Callable, Any
 
 import cv2
 import httpx
@@ -185,51 +185,119 @@ def _ocr_yomitoku_rest(images: List[np.ndarray], timeout: int = YOMITOKU_TIMEOUT
     return results
 
 
-def _ocr_yomitoku_cli(images: List[np.ndarray], cli_path: str, max_workers: int = YOMITOKU_MAX_WORKERS) -> List[str]:
-    cli_path = cli_path.strip()
-    if not cli_path:
-        raise YomiTokuError("環境変数 YOMITOKU_CLI_PATH が設定されていません。")
+def _resolve_yomitoku_callable() -> Callable[[Any], Any]:
+    try:
+        import yomitoku  # type: ignore[import-not-found]
+    except ImportError as exc:  # pragma: no cover - requires optional dependency
+        raise YomiTokuError("yomitoku パッケージがインストールされていません。pip install yomitoku を実行してください。") from exc
+
+    entrypoint = os.getenv("YOMITOKU_PY_ENTRYPOINT", "").strip()
+
+    if entrypoint:
+        module_name, _, attr_name = entrypoint.rpartition(".")
+        if not module_name:
+            raise YomiTokuError(
+                "YOMITOKU_PY_ENTRYPOINT には 'module.attr' 形式でモジュールと属性を指定してください。"
+            )
+        module = import_module(module_name)
+        try:
+            target = getattr(module, attr_name)
+        except AttributeError as exc:
+            raise YomiTokuError(f"YOMITOKU_PY_ENTRYPOINT の属性が見つかりません: {entrypoint}") from exc
+        if not callable(target):
+            raise YomiTokuError(f"YOMITOKU_PY_ENTRYPOINT で指定されたオブジェクトは呼び出し可能ではありません: {entrypoint}")
+        return target
+
+    candidate_names = [
+        "ocr_bytes",
+        "ocr_image_bytes",
+        "ocr_image",
+    ]
+
+    for name in candidate_names:
+        target = getattr(yomitoku, name, None)
+        if callable(target):
+            return target
+
+    for cls_name in ("OCRClient", "YomiTokuClient", "Client"):
+        client_cls = getattr(yomitoku, cls_name, None)
+        if client_cls is None:
+            continue
+        try:
+            client = client_cls()
+        except TypeError:
+            try:
+                client = client_cls(os.getenv("YOMITOKU_BASE_URL", "") or None)
+            except TypeError:
+                client = client_cls()
+        for name in candidate_names:
+            target = getattr(client, name, None)
+            if callable(target):
+                return target
+
+    raise YomiTokuError("yomitoku の Python API を特定できません。YOMITOKU_PY_ENTRYPOINT を設定してください。")
+
+
+def _invoke_yomitoku_callable(
+    callable_obj: Callable[[Any], Any],
+    image: np.ndarray,
+    png_bytes: bytes,
+) -> Any:
+    attempts: list[Callable[[], Any]] = [
+        lambda: callable_obj(png_bytes),
+        lambda: callable_obj(image),
+    ]
+
+    def _call_with_tempfile() -> Any:
+        with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as handle:
+            handle.write(png_bytes)
+            handle.flush()
+            temp_path = handle.name
+        try:
+            return callable_obj(temp_path)
+        finally:
+            try:
+                os.unlink(temp_path)
+            except FileNotFoundError:
+                pass
+
+    attempts.append(_call_with_tempfile)
+
+    last_exc: Exception | None = None
+    for attempt in attempts:
+        try:
+            return attempt()
+        except TypeError as exc:
+            last_exc = exc
+            continue
+    if last_exc is not None:
+        raise YomiTokuError("yomitoku Python API の呼び出しに失敗しました。対応する引数形式を確認してください。") from last_exc
+    raise YomiTokuError("yomitoku Python API の呼び出しに失敗しました。")
+
+
+def _normalize_yomitoku_payload(raw_payload: Any) -> dict:
+    if isinstance(raw_payload, bytes):
+        raw_payload = raw_payload.decode("utf-8")
+    if isinstance(raw_payload, str):
+        try:
+            payload = json.loads(raw_payload)
+        except json.JSONDecodeError as exc:
+            raise YomiTokuError("YomiToku Python API 応答が JSON ではありません。") from exc
+        return payload
+    if isinstance(raw_payload, dict):
+        return raw_payload
+    raise YomiTokuError("YomiToku Python API から予期しない型の応答を受け取りました。")
+
+
+def _ocr_yomitoku_python(images: List[np.ndarray], max_workers: int = YOMITOKU_MAX_WORKERS) -> List[str]:
+    callable_obj = _resolve_yomitoku_callable()
 
     def worker(item: tuple[int, np.ndarray]) -> str:
         index, image = item
         png_bytes = _encode_png(image)
-        temp_file: tempfile.NamedTemporaryFile | None = None
-        try:
-            temp_file = tempfile.NamedTemporaryFile(delete=False, suffix=".png")
-            temp_file.write(png_bytes)
-            temp_file.flush()
-            temp_file.close()
-            try:
-                completed = subprocess.run(
-                    [cli_path, "--image", temp_file.name],
-                    check=False,
-                    capture_output=True,
-                    text=True,
-                    timeout=YOMITOKU_TIMEOUT,
-                )
-            except FileNotFoundError as exc:
-                raise YomiTokuError(f"YomiToku CLI が見つかりません: {cli_path}") from exc
-            except subprocess.TimeoutExpired as exc:
-                raise YomiTokuError(f"YomiToku CLI がタイムアウトしました (page={index + 1})") from exc
-            if completed.returncode != 0:
-                stderr = (completed.stderr or "").strip()
-                raise YomiTokuError(
-                    f"YomiToku CLI がエラーを返しました (code={completed.returncode}, page={index + 1}): {stderr}"
-                )
-            stdout = (completed.stdout or "").strip()
-            if not stdout:
-                raise YomiTokuError(f"YomiToku CLI が空の応答を返しました (page={index + 1})。")
-            try:
-                payload = json.loads(stdout)
-            except json.JSONDecodeError as exc:
-                raise YomiTokuError("YomiToku CLI 応答が JSON ではありません。") from exc
-            return _parse_yomitoku_payload(payload, index)
-        finally:
-            if temp_file is not None:
-                try:
-                    os.unlink(temp_file.name)
-                except FileNotFoundError:
-                    pass
+        raw_payload = _invoke_yomitoku_callable(callable_obj, image, png_bytes)
+        payload = _normalize_yomitoku_payload(raw_payload)
+        return _parse_yomitoku_payload(payload, index)
 
     return execute_concurrently(worker, list(enumerate(images)), max_workers=max_workers)
 
@@ -250,8 +318,7 @@ def _run_yomitoku(images: List[np.ndarray]) -> tuple[List[str], str]:
         texts = _ocr_yomitoku_rest(images)
         return texts, "yomitoku"
     if mode == "cli":
-        cli_path = os.getenv("YOMITOKU_CLI_PATH", "")
-        texts = _ocr_yomitoku_cli(images, cli_path)
+        texts = _ocr_yomitoku_python(images)
         return texts, "yomitoku"
     raise YomiTokuError(f"未対応の YOMITOKU_MODE です: {mode}")
 
